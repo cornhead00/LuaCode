@@ -59,6 +59,9 @@
     <Compile Include="Assets\Scripts\TabMachine.cs" />
     <Compile Include="Assets\TutorialInfo\Scripts\Readme.cs" />
     <Compile Include="Assets\Scripts\SimpleCameraController.cs" />
+    <Compile Include="Assets\Scripts\TabMachineWrap\Tab_warp.cs" />
+    <Compile Include="Assets\Scripts\TabMachineWrap\GameFlowTab_warp.cs" />
+    <Compile Include="Assets\Scripts\TabMachineWrap\GamePlayTab_warp.cs" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="UnityEngine">
