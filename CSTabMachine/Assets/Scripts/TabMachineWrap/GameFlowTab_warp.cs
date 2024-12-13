@@ -4,9 +4,9 @@ using System.Collections.Generic;
 
 public partial class GameFlowTab : Tab
 {
-   static Dictionary<string, string> nextNameFindMap = new Dictionary<string, string>(){{"s1", "s2"}, {"Final", "Final1"}};
+   static Dictionary<string, string> nextNameFindMap = new Dictionary<string, string>(){{"s1", "s2"}, {"s3", "s4"}, {"Final", "Final1"}};
 
-   static Dictionary<string, int> methodFindMap = new Dictionary<string, int>(){{"s1", 0}, {"Final", 0}};
+   static Dictionary<string, int> methodFindMap = new Dictionary<string, int>(){{"s1", 0}, {"s3", 1}, {"Final", 0}};
 
    static List<Action> method0List = new List<Action>();
    static List<Action<System.Int32, System.Int32>> method1List = new List<Action<System.Int32, System.Int32>>();
@@ -15,6 +15,7 @@ public partial class GameFlowTab : Tab
     protected override void Compile()
     {
        method1List.Add(this.s1);
+   method1List.Add(this.s3);
    method0List.Add(this.Final);
 
     }

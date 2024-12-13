@@ -62,6 +62,7 @@
     <Compile Include="Assets\Scripts\TabMachineWrap\Tab_warp.cs" />
     <Compile Include="Assets\Scripts\TabMachineWrap\GameFlowTab_warp.cs" />
     <Compile Include="Assets\Scripts\TabMachineWrap\GamePlayTab_warp.cs" />
+    <Compile Include="Assets\Scripts\DataStruct.cs" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="UnityEngine">
