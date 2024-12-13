@@ -25,30 +25,10 @@ public class TabMachine : MonoBehaviour
         //    UpdateTab(gameFlow);
         //}
     }
-    private void UpdateTab(Tab tab)
-    {
-        for (int i = tab.StepList.Count - 1; i >= 0; i--)
-        {
-            TabStep tabStep = tab.StepList[i];
-            if (tabStep.IsStop)
-            {
-                tab.StepList.RemoveAt(i);
-            }
-            else
-            {
-                tabStep.Update();
-                if (tabStep.BindTab != null)
-                {
-                    UpdateTab(tabStep.BindTab);
-                }
-            }
-        }
-    }
 }
 
 public class TabStep
 {
-    public Tab BindTab;
     private Tab _tab;
     private string _stepName;
     public string StepName
@@ -61,42 +41,14 @@ public class TabStep
     public bool IsAutoStop;
 
     private bool _isPreCompile;
-    private MethodInfo updateFun;
+    private MethodInfo _updateFun;
+    private Action _updateAction;
     public TabStep(Tab tab, string stepName, bool isPreCompile)
     {
         _tab = tab;
         _stepName = stepName;
         _isPreCompile = isPreCompile;
-        if (isPreCompile)
-        {
-
-        }
-        else
-        {
-            if (BindTab != null)
-            {
-                BindTab.MethodList.TryGetValue("update", out updateFun);
-            }
-            else
-            {
-                tab.MethodList.TryGetValue(stepName + "_update", out updateFun);
-            }
-        }
         IsStop = false;
-    }
-    public void Update()
-    {
-        if (!_isPreCompile && updateFun != null)
-        {
-            if (BindTab != null)
-            {
-                updateFun.Invoke(BindTab, null);
-            }
-            else
-            {
-                updateFun.Invoke(_tab, null);
-            }
-        }
     }
 }
 
@@ -155,7 +107,6 @@ public partial class Tab
     private void CreateMainStep(Tab tab, string stepName, bool isPreCompile)
     {
         TabStep tabStep = new TabStep(this, stepName, isPreCompile);
-        tabStep.BindTab = tab;
         tabStep.IsAutoStop = AutoStop("update", "event");
         _stepList.Add(tabStep);
         tab.MainStep = tabStep;
@@ -334,7 +285,3 @@ public partial class GamePlayTab : Tab
     //    Debug.LogError("3y");
     //}
 }
-
-
-//warp
-//����call,start,DoNext

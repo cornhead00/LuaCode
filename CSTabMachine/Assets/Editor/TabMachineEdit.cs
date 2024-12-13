@@ -9,6 +9,34 @@ using UnityEngine;
 
 public static class CompileTabMachine
 {
+    [MenuItem("TabMachine/Clear Code", false, 1)]
+    public static void ClearAll()
+    {
+        string folderPath = "Assets/Scripts/TabMachineWrap";
+        ClearFolder(folderPath);
+    }
+    private static void ClearFolder(string folderPath)
+    {
+        // 获取文件夹中所有文件的路径
+        string[] filePaths = Directory.GetFiles(folderPath);
+
+        foreach (string filePath in filePaths)
+        {
+            // 删除每个文件
+            File.Delete(filePath);
+        }
+
+        // 获取文件夹中所有子文件夹的路径
+        string[] directoryPaths = Directory.GetDirectories(folderPath);
+
+        foreach (string directoryPath in directoryPaths)
+        {
+            // 递归删除子文件夹中的文件
+            ClearFolder(directoryPath);
+            // 删除子文件夹本身
+            Directory.Delete(directoryPath, false);
+        }
+    }
     [MenuItem("TabMachine/Compile Code", false, 1)]
     public static void CompileAll()
     {
