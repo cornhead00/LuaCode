@@ -138,10 +138,10 @@ public partial class Tab
         int actionIndex = 0;
         bool isAutoStop = true;
         Action updateAction = null;
-        if (methodFindMap.TryGetValue(updateName, out actionIndex))
+        if (tab.GetMethodIndex(updateName, out actionIndex))
         {{
             isAutoStop = false;
-            updateAction = method0List[actionIndex];
+            updateAction = tab.method0List[actionIndex];
         }}
         if (!isAutoStop || force)
         {{
@@ -163,6 +163,12 @@ public partial class Tab
             name = base.GetNextStepName(stepName);
         }}
         return name;
+    }}
+";
+        string getMethodIndex = $@"
+    public override bool GetMethodIndex(string methodName, out int methodIndex)
+    {{
+        return methodFindMap.TryGetValue(methodName, out methodIndex);
     }}
 ";
 
@@ -191,6 +197,7 @@ public partial class {className} : Tab
 {notifyParentDoNext}
 {nextStepName}
 {autoStop}
+{getMethodIndex}
 {methodFind}
 {startMethods}
 {doEventsMethods}
@@ -442,6 +449,7 @@ public partial class {className} : Tab
         string doNextMethod = $@"
     public void DoNext(string stepName)
     {{
+        NotifyProxyDoNext(stepName);
         string nextStepName = GetNextStepName(stepName);
         Start(nextStepName);
     }}
@@ -466,6 +474,7 @@ public partial class {className} : Tab
             doNextMethod = $@"
     public void DoNext(string stepName, {strPrams})
     {{
+        NotifyProxyDoNext(stepName);
         string nextStepName = GetNextStepName(stepName);
         Start(nextStepName, {strInvokePrams});
     }}
@@ -617,10 +626,9 @@ public partial class {className} : Tab
     private static string CreateMethodListStr(Dictionary<string, int> singleParamsTypeMap)
     {
         StringWriter stringWriter = new StringWriter();
-        stringWriter.WriteLine($"   static List<Action> method0List = new List<Action>();");
         foreach (KeyValuePair<string, int> pairs in singleParamsTypeMap)
         {
-            stringWriter.WriteLine($"   static List<Action<{pairs.Key}>> method{pairs.Value}List = new List<Action<{pairs.Key}>>();");
+            stringWriter.WriteLine($"   List<Action<{pairs.Key}>> method{pairs.Value}List = new List<Action<{pairs.Key}>>();");
         }
         string result = stringWriter.ToString();
         stringWriter.Dispose();

@@ -105,6 +105,7 @@ public partial class Tab
     }
     protected static Dictionary<Type, Dictionary<string, MethodInfo>> _allMethodList = new Dictionary<Type, Dictionary<string, MethodInfo>>();
     protected Dictionary<string, MethodInfo> _methodList;
+    public List<Action> method0List = new List<Action>();
     protected List<TabStep> _stepList = new List<TabStep>();
     protected System.Object[] _result = null;
     protected List<ProxyTab> _proxyList;
@@ -135,6 +136,11 @@ public partial class Tab
     public Tab()
     {
         Compile();
+    }
+    public virtual bool GetMethodIndex(string methodName, out int methodIndex)
+    {
+        methodIndex = -1;
+        return false;
     }
     public virtual TabStep AutoCreateStep(Tab tab, string stepName, string updateName, bool force)
     {
@@ -466,7 +472,6 @@ public partial class GamePlayTab : Tab
     void s1(int a, int b)
     {
         Debug.LogError("1y" + (a + b));
-        Output(3, 4);
     }
     void s1_update()
     {
@@ -479,6 +484,7 @@ public partial class GamePlayTab : Tab
     }
     private void s2()
     {
+        Output(3, 4);
         Debug.LogError("2y");
     }
     protected override void Final()

@@ -60,6 +60,12 @@
     <Compile Include="Assets\TutorialInfo\Scripts\Readme.cs" />
     <Compile Include="Assets\Scripts\SimpleCameraController.cs" />
     <Compile Include="Assets\Scripts\DataStruct.cs" />
+    <Compile Include="Assets\Scripts\TabMachineWrap\GamePlayTab_warp.cs" />
+    <Compile Include="Assets\Scripts\TabMachineWrap\EmptyTab_warp.cs" />
+    <Compile Include="Assets\Scripts\TabMachineWrap\ProxyTab_warp.cs" />
+    <Compile Include="Assets\Scripts\TabMachineWrap\GameFlowTab_warp.cs" />
+    <Compile Include="Assets\Scripts\TabMachineWrap\Tab_warp.cs" />
+    <Compile Include="Assets\Scripts\TabMachineWrap\AliveTab_warp.cs" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="UnityEngine">
