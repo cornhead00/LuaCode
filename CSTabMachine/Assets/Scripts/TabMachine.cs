@@ -107,6 +107,8 @@ public partial class Tab
     protected Dictionary<string, MethodInfo> _methodList;
     protected List<TabStep> _stepList = new List<TabStep>();
     protected System.Object[] _result = null;
+    protected List<ProxyTab> _proxyList;
+
     private int _resultIndex = -1;
     public List<TabStep> StepList
     {
@@ -138,7 +140,7 @@ public partial class Tab
     {
         MethodInfo updateMethod = null;
         bool isAutoStop = true;
-        if (_methodList != null && _methodList.TryGetValue(updateName, out updateMethod))
+        if (tab._methodList != null && tab._methodList.TryGetValue(updateName, out updateMethod))
         {
             isAutoStop = false;
         }
@@ -155,6 +157,7 @@ public partial class Tab
     {
         TabStep tabStep = AutoCreateStep(this, "root", "update", true);
         this.MainStep = tabStep;
+        _stepList.Add(tabStep);
     }
     private void CreateMainStep(Tab tab, string stepName)
     {
@@ -166,8 +169,15 @@ public partial class Tab
     }
     public void Call(Tab tab, string stepName, params object[] param)
     {
-        CreateMainStep(tab, stepName);
-        tab.Start("s1", param);
+        if (tab != null)
+        {
+            CreateMainStep(tab, stepName);
+            tab.Start("s1", param);
+        }
+        else
+        {
+            DoNext(stepName);
+        }
     }
     public void Start(string stepName, params object[] param)
     {
@@ -218,7 +228,7 @@ public partial class Tab
         }
         if (MainStep.IsAutoStop)
         {
-            Stop(null);
+            Stop();
         }
     }
     protected virtual string GetNextStepName(string stepName)
@@ -253,6 +263,7 @@ public partial class Tab
     }
     public void DoNext(string stepName, params object[] param)
     {
+        NotifyProxyDoNext(stepName);
         string nextStepName = GetNextStepName(stepName);
         Start(nextStepName, param);
     }
@@ -267,7 +278,7 @@ public partial class Tab
     {
         _result = result;
     }
-    public void Stop(string stepName)
+    public void Stop(string stepName = null)
     {
         if (MainStep.IsStop)
         {
@@ -278,6 +289,7 @@ public partial class Tab
             MainStep.IsStop = true;
             Final();
             NotifyParentDoNext();
+            NotifyProxyDoNext();
         }
         else
         {
@@ -328,33 +340,120 @@ public partial class Tab
             ParentTab.DoEvent(eventName, param);
         }
     }
+    private bool HaveTabStep(string stepName)
+    {
+        for (int i = 0; i < _stepList.Count; i++)
+        {
+            TabStep tabStep = _stepList[i];
+            if (!tabStep.IsStop && tabStep.StepName == stepName)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+    private void NotifyProxyDoNext(string stepName = null)
+    {
+        if (_proxyList == null)
+        {
+            return;
+        }
+        for(int i = _proxyList.Count - 1; i >= 0; i--)
+        {
+            ProxyTab tab = _proxyList[i];
+            if (stepName == null || (tab.ProxyName != null && !HaveTabStep(tab.ProxyName)))
+            {
+                tab.Stop();
+                _proxyList.Remove(tab);
+            }
+        }
+    }
+    public ProxyTab Proxy(string stepName = null)
+    {
+        if (MainStep.IsStop)
+        {
+            return null;
+        }
+        if (stepName != null)
+        {
+            if (!HaveTabStep(stepName))
+            {
+                return null;
+            }
+        }
+        ProxyTab tab = new ProxyTab();
+        tab.ProxyName = stepName;
+        if (_proxyList == null)
+        {
+            _proxyList = new List<ProxyTab>();
+        }
+        _proxyList.Add(tab);
+        return tab;
+    }
     protected virtual void Final()
     {
 
     }
 }
 
-public partial class GameFlowTab : Tab
+public partial class ProxyTab : Tab
 {
-    void s1(int a, int b)
+    public string ProxyName;
+    void s1()
     {
         IsAutoStop = false;
-        Debug.LogError("1X" + (a + b));
-        //System.Diagnostics.Stopwatch stopwatch = new System.Diagnostics.Stopwatch();
-        //stopwatch.Start();
-        //for (int i = 0; i < 100000; i++)
-        //{
-        //    Call(new GamePlayTab(), "s2");
-        //}
+    }
+}
 
-        //stopwatch.Stop();
-        //Debug.LogError($"Execution time: {stopwatch.ElapsedMilliseconds}");
-        Call(new GamePlayTab(), "s2", 1, 2);
-        Notify("stop");
+public partial class EmptyTab : Tab
+{
+
+}
+
+public partial class AliveTab : Tab
+{
+    void s1()
+    {
+        IsAutoStop = false;
+    }
+}
+
+public partial class GameFlowTab : Tab
+{
+    int count = 0;
+    void s1(int a, int b)
+    {
+        Debug.LogError("1X" + (a + b));
+        System.Diagnostics.Stopwatch stopwatch = new System.Diagnostics.Stopwatch();
+        stopwatch.Start();
+        for (int i = 0; i < 100000; i++)
+        {
+            Call(new EmptyTab(), "c1");
+        }
+        stopwatch.Stop();
+        Debug.LogError($"Execution time: {stopwatch.ElapsedMilliseconds}");
+        GamePlayTab gamePlayTab = new GamePlayTab();
+        Call(gamePlayTab, "s2", 1, 2);
+        Call(gamePlayTab.Proxy("s1"), "t1");
+    }
+    void t2()
+    {
+        Debug.LogError("1t");
     }
     void s3(int a, int b)
     {
         Debug.LogError("2X" + (a + b));
+    }
+    void update()
+    {
+        if (count <= 5)
+        {
+            count++;
+            if (count == 5)
+            {
+                Notify("stop");
+            }
+        }
     }
     protected override void Final()
     {
@@ -372,20 +471,18 @@ public partial class GamePlayTab : Tab
     void s1_update()
     {
         Debug.LogError("1y_update");
-        //Stop("s1");
     }
     void event_stop()
     {
         Debug.LogError("1y_stop");
         Stop("s1");
     }
-    //private void s2()
-    //{
-    //    Debug.LogError("2y");
-    //}
-    //protected override void Final()
-    //{
-    //    Output(1, 3, 4);
-    //    Debug.LogError("3y");
-    //}
+    private void s2()
+    {
+        Debug.LogError("2y");
+    }
+    protected override void Final()
+    {
+        Debug.LogError("3y");
+    }
 }

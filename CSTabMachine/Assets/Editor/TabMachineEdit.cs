@@ -246,8 +246,15 @@ public partial class {className} : Tab
         string callMethod = $@"
     public void Call(Tab tab, string stepName)
     {{
-        CreateMainStep(tab, stepName);
-        tab.Start(""s1"");
+        if (tab != null)
+        {{
+            CreateMainStep(tab, stepName);
+            tab.Start(""s1"");
+        }}
+        else
+        {{
+            DoNext(stepName);
+        }}
     }}
 ";
         stringWriter.Write(callMethod);
@@ -269,8 +276,15 @@ public partial class {className} : Tab
             callMethod = $@"
     public void Call(Tab tab, string stepName, {strPrams})
     {{
-        CreateMainStep(tab, stepName);
-        tab.Start(""s1"", {strInvokePrams});
+        if (tab != null)
+        {{
+            CreateMainStep(tab, stepName);
+            tab.Start(""s1"", {strInvokePrams});
+        }}
+        else
+        {{
+            DoNext(stepName);
+        }}
     }}
 ";
             stringWriter.Write(callMethod);
