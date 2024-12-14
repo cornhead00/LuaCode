@@ -14,6 +14,7 @@ public static class CompileTabMachine
     {
         string folderPath = "Assets/Scripts/TabMachineWrap";
         ClearFolder(folderPath);
+        AssetDatabase.Refresh();
     }
     private static void ClearFolder(string folderPath)
     {
@@ -69,6 +70,7 @@ public partial class Tab
 }}
 ";
         File.WriteAllText("Assets/Scripts/TabMachineWrap/Tab_warp.cs", fileContent);
+        AssetDatabase.Refresh();
     }
     private static string CreateOutputMethodsStr(Dictionary<string, int> paramsTypeMap, out string outputValStr)
     {
@@ -116,7 +118,7 @@ public partial class Tab
         string callMethod = $@"
     public void Call(Tab tab, string stepName)
     {{
-        CreateMainStep(tab, stepName, true);
+        CreateMainStep(tab, stepName);
         tab.Start(""s1"");
     }}
 ";
@@ -139,7 +141,7 @@ public partial class Tab
             callMethod = $@"
     public void Call(Tab tab, string stepName, {strPrams})
     {{
-        CreateMainStep(tab, stepName, true);
+        CreateMainStep(tab, stepName);
         tab.Start(""s1"", {strInvokePrams});
     }}
 ";
@@ -232,7 +234,7 @@ public partial class Tab
         {
             string[] typesList = pairs.Key.Split(',');
             string conditionInfo = "ParentTab.DoNext(Name, ";
-            for(int i = 1; i <= typesList.Length; i++)
+            for (int i = 1; i <= typesList.Length; i++)
             {
                 conditionInfo += "_result" + pairs.Value + ".Item" + i;
                 if (i != typesList.Length)
@@ -278,9 +280,6 @@ public partial class Tab
     }
     private static string GetNextStepName(string stepName)
     {
-        ValueTuple<int, int> a = (1, 0);
-
-
         string result;
         char lastChar = stepName[stepName.Length - 1];
         if (lastChar >= '0' && lastChar <= '9')
@@ -498,17 +497,24 @@ public partial class Tab
 ";
 
         string autoStop = $@"
-    public override bool AutoStop(string updateName, string eventName)
+    public override TabStep AutoCreateStep(Tab tab, string stepName, string updateName, string eventName, bool force)
     {{
-        return !methodFindMap.ContainsKey(updateName) && !methodFindMap.ContainsKey(eventName);
-    }}
-";
-        string initstall = $@"
-    public override void Initstall()
-    {{
-        TabStep tabStep = new TabStep(this, ""root"", true);
-        tabStep.IsAutoStop = AutoStop(""update"", ""event"");
-        this.MainStep = tabStep;
+        int actionIndex = 0;
+        bool isAutoStop = true;
+        Action updateAction = null;
+        if (methodFindMap.TryGetValue(updateName, out actionIndex))
+        {{
+            isAutoStop = false;
+            updateAction = method0List[actionIndex];
+        }}
+        if (!isAutoStop || force)
+        {{
+            TabStep tabStep = new TabStep(tab, stepName);
+            tabStep.IsAutoStop = isAutoStop;
+            tabStep.UpdateAction = updateAction;
+            return tabStep;
+        }}
+        return null;
     }}
 ";
 
@@ -523,8 +529,8 @@ public partial class Tab
         return name;
     }}
 ";
-        
-    string notifyParentDoNext = $@"
+
+        string notifyParentDoNext = $@"
     protected override void NotifyParentDoNext()
     {{
         base.NotifyParentDoNextNoConvert();
@@ -538,12 +544,27 @@ public partial class Tab
         int insertIndex = 0;
         if (methodFindMap.TryGetValue(stepName, out insertIndex))
         {{
-            TabStep tabStep = CreateStep(stepName, true);
-            Action action = {methodName}[insertIndex];
-            action.Invoke();
-            if (tabStep.IsAutoStop)
+            TabStep tabStep = AutoCreateStep(this, stepName, stepName + ""_update"", stepName + ""_event"", false);
+            if (tabStep == null)
             {{
-                tabStep.IsStop = true;
+                MainStep.InWork = true;
+            }}
+            else
+            {{
+                _stepList.Add(tabStep);
+            }}
+            Action action = {methodName}[insertIndex];            
+            try
+            {{
+                action.Invoke();
+            }}
+            catch (System.Exception e)
+            {{
+                Debug.LogError(string.Format(""Message: { 0}\nStackTrace: { 1} "", e.Message, e.StackTrace));
+            }}
+            if (tabStep == null)
+            {{
+                MainStep.InWork = false;
                 DoNext(stepName);
             }}
         }}
@@ -577,11 +598,27 @@ public partial class Tab
         int insertIndex = 0;
         if (methodFindMap.TryGetValue(stepName, out insertIndex))
         {{
-            TabStep tabStep = CreateStep(stepName, true);            
-            Action<{pairs.Key}> action = {methodName}[insertIndex];
-            action.Invoke({strInvokePrams});
+            TabStep tabStep = AutoCreateStep(this, stepName, stepName + ""_update"", stepName + ""_event"", false);
+            if (tabStep == null)
             {{
-                tabStep.IsStop = true;
+                MainStep.InWork = true;
+            }}
+            else
+            {{
+                _stepList.Add(tabStep);
+            }}           
+            Action<{pairs.Key}> action = {methodName}[insertIndex];
+            try
+            {{
+                action.Invoke({strInvokePrams});
+            }}
+            catch (System.Exception e)
+            {{
+                Debug.LogError(string.Format(""Message: { 0}\nStackTrace: { 1} "", e.Message, e.StackTrace));
+            }}
+            if (tabStep == null)
+            {{
+                MainStep.InWork = false;
                 DoNext(stepName);
             }}
         }}
@@ -600,6 +637,7 @@ public partial class Tab
         string fileContent = $@"
 using System;
 using System.Collections.Generic;
+using UnityEngine;
 
 public partial class {className} : Tab
 {{
@@ -607,7 +645,6 @@ public partial class {className} : Tab
 {methodFindStr}
 {methodListStr}
 {compileStr}
-{initstall}
 {notifyParentDoNext}
 {nextStepName}
 {autoStop}

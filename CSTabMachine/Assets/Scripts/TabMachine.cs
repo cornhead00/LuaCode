@@ -20,16 +20,42 @@ public class TabMachine : MonoBehaviour
     }
     private void Update()
     {
-        //if (gameFlow != null)
-        //{
-        //    UpdateTab(gameFlow);
-        //}
+        if (gameFlow != null)
+        {
+            UpdateTab(gameFlow);
+        }
+    }
+    public void UpdateTab(Tab tab)
+    {
+        for(int i = tab.StepList.Count - 1; i >= 0; i--)
+        {
+            TabStep tabStep = tab.StepList[i];
+            if (tabStep.IsStop)
+            {
+                tab.StepList.RemoveAt(i);
+            }
+            else
+            {
+                tabStep.Update();
+                if (tabStep.Tab != tab)
+                {
+                    UpdateTab(tabStep.Tab);
+                }
+            }
+        }
     }
 }
 
 public class TabStep
 {
     private Tab _tab;
+    public Tab Tab
+    {
+        get
+        {
+            return _tab;
+        }
+    }
     private string _stepName;
     public string StepName
     {
@@ -40,15 +66,26 @@ public class TabStep
     public bool IsStop;
     public bool IsAutoStop;
 
-    private bool _isPreCompile;
-    private MethodInfo _updateFun;
-    private Action _updateAction;
-    public TabStep(Tab tab, string stepName, bool isPreCompile)
+    public MethodInfo UpdateMethod;
+    public Action UpdateAction;
+    public bool InWork;
+    public TabStep(Tab tab, string stepName)
     {
         _tab = tab;
         _stepName = stepName;
-        _isPreCompile = isPreCompile;
         IsStop = false;
+        InWork = false;
+    }
+    public void Update()
+    {
+        if (UpdateAction != null)
+        {
+            UpdateAction();
+        }
+        else if (UpdateMethod != null)
+        {
+            UpdateMethod.Invoke(_tab, null);
+        }
     }
 }
 
@@ -62,12 +99,6 @@ public partial class Tab
     protected List<TabStep> _stepList = new List<TabStep>();
     protected System.Object[] _result = null;
     private int _resultIndex = -1;
-    public Dictionary<string, MethodInfo> MethodList
-    {
-        get {
-            return _methodList;
-        }
-    }
     public List<TabStep> StepList
     {
         get {
@@ -94,20 +125,31 @@ public partial class Tab
     {
         Compile();
     }
-    public virtual bool AutoStop(string updateName, string eventName)
+    public virtual TabStep AutoCreateStep(Tab tab, string stepName, string updateName, string eventName, bool force)
     {
-        return !_methodList.ContainsKey(updateName) && !_methodList.ContainsKey(eventName);
+        MethodInfo updateMethod;
+        bool isAutoStop = true;
+        if (_methodList.TryGetValue(updateName, out updateMethod))
+        {
+            isAutoStop = false;
+        }
+        if (!isAutoStop || force)
+        {
+            TabStep tabStep = new TabStep(tab, stepName);
+            tabStep.IsAutoStop = isAutoStop;
+            tabStep.UpdateMethod = updateMethod;
+            return tabStep;
+        }
+        return null;
     }
-    public virtual void Initstall()
+    public void Initstall()
     {
-        TabStep tabStep = new TabStep(this, "root", false);
-        tabStep.IsAutoStop = AutoStop("update", "event");
+        TabStep tabStep = AutoCreateStep(this, "root", "update", "event", true);
         this.MainStep = tabStep;
     }
-    private void CreateMainStep(Tab tab, string stepName, bool isPreCompile)
+    private void CreateMainStep(Tab tab, string stepName)
     {
-        TabStep tabStep = new TabStep(this, stepName, isPreCompile);
-        tabStep.IsAutoStop = AutoStop("update", "event");
+        TabStep tabStep = AutoCreateStep(tab, stepName, "update", "event", true);
         _stepList.Add(tabStep);
         tab.MainStep = tabStep;
         tab.ParentTab = this;
@@ -115,27 +157,34 @@ public partial class Tab
     }
     public void Call(Tab tab, string stepName, params object[] param)
     {
-        CreateMainStep(tab, stepName, false);
+        CreateMainStep(tab, stepName);
         tab.Start("s1", param);
-    }
-    protected TabStep CreateStep(string stepName, bool isPreCompile)
-    {
-        bool isAutoStop = AutoStop(stepName + "_update", stepName + "_event");
-        TabStep tabStep = new TabStep(this, stepName, isPreCompile);
-        tabStep.IsAutoStop = isAutoStop;
-        _stepList.Add(tabStep);
-        return tabStep;
     }
     public void Start(string stepName, params object[] param)
     {
         MethodInfo mainMethod;
         if (_methodList.TryGetValue(stepName, out mainMethod))
         {
-            TabStep tabStep = CreateStep(stepName, false);
-            mainMethod.Invoke(this, param);
-            if (tabStep.IsAutoStop)
+            TabStep tabStep = AutoCreateStep(this, stepName, stepName + "_update", stepName + "_event", false);
+            if (tabStep == null)
             {
-                tabStep.IsStop = true;
+                MainStep.InWork = true;
+            }
+            else
+            {
+                _stepList.Add(tabStep);
+            }
+            try
+            {
+                mainMethod.Invoke(this, param);
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError(string.Format("Message:{0}\nStackTrace:{1}", e.Message, e.StackTrace));
+            }
+            if (tabStep == null)
+            {
+                MainStep.InWork = false;
                 DoNext(stepName);
             }
         }
@@ -146,7 +195,11 @@ public partial class Tab
     }
     protected void OnStartError()
     {
-        for (int i = 0; i < _stepList.Count; i++)
+        if (MainStep.InWork)
+        {
+            return;
+        }
+        for (int i = _stepList.Count - 1; i >= 0; i--)
         {
             TabStep tabStep = _stepList[i];
             if (!tabStep.IsStop)
@@ -231,6 +284,34 @@ public partial class Tab
             DoNext(stepName);
         }
     }
+    public virtual void DoEvent(string eventName, params object[] param)
+    {
+        MethodInfo eventMethod;
+        if (_methodList.TryGetValue(eventName, out eventMethod))
+        {
+            eventMethod.Invoke(this, param);
+        }
+    }
+    protected virtual void Notify(string eventName, params object[] param)
+    {
+        string methodName = "event_" + eventName;
+        for(int i = 0; i < _stepList.Count; i++)
+        {
+            TabStep tabStep = _stepList[i];
+            if (!tabStep.IsStop && tabStep.Tab != this)
+            {
+                tabStep.Tab.DoEvent(methodName, param);
+            }
+        }
+    }
+    protected virtual void UpwardNotify(string eventName, params object[] param)
+    {
+        if (ParentTab != null && ParentTab.MainStep != null && !ParentTab.MainStep.IsStop)
+        {
+            string methodName = "event_" + eventName;
+            ParentTab.DoEvent(methodName, param);
+        }
+    }
     protected virtual void Final()
     {
 
@@ -246,12 +327,13 @@ public partial class GameFlowTab : Tab
         //stopwatch.Start();
         //for (int i = 0; i < 100000; i++)
         //{
-        //    Call(new GamePlayTab(), "s2", 1, 3);
+        //    Call(new GamePlayTab(), "s2");
         //}
 
         //stopwatch.Stop();
         //Debug.LogError($"Execution time: {stopwatch.ElapsedMilliseconds}");
         Call(new GamePlayTab(), "s2", 1, 2);
+        Notify("stop");
     }
     void s3(int a, int b)
     {
@@ -268,13 +350,18 @@ public partial class GamePlayTab : Tab
     void s1(int a, int b)
     {
         Debug.LogError("1y" + (a + b));
-        Output(3,4);
+        Output(3, 4);
     }
-    //private void s1_update()
-    //{
-    //    Debug.LogError("1y_update");
-    //    Stop("s1");
-    //}
+    void s1_update()
+    {
+        Debug.LogError("1y_update");
+        //Stop("s1");
+    }
+    void event_stop()
+    {
+        Debug.LogError("1y_stop");
+        Stop("s1");
+    }
     //private void s2()
     //{
     //    Debug.LogError("2y");
