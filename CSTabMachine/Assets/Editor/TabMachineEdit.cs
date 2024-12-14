@@ -56,6 +56,9 @@ public static class CompileTabMachine
         string callMethods = CreateCallMethodsStr(paramsTypeMap);
         string starMethods = CreateStarMethodsStr(paramsTypeMap);
         string doNextMethods = CreateDoNextMethodsStr(paramsTypeMap);
+        string doEventsMethods = CreateDoEventMethodsStr(paramsTypeMap);
+        string notifysMethods = CreateNotifyMethodsStr(paramsTypeMap);
+        string upwardNotifyMethods = CreateUpwardNotifyMethodsStr(paramsTypeMap);
 
         string fileContent = $@"
 using System;
@@ -66,12 +69,137 @@ public partial class Tab
     {ouputMethods}
     {callMethods}
     {starMethods}
+    {doEventsMethods}
     {doNextMethods}
+    {notifysMethods}
+    {upwardNotifyMethods}
 }}
 ";
         File.WriteAllText("Assets/Scripts/TabMachineWrap/Tab_warp.cs", fileContent);
         AssetDatabase.Refresh();
     }
+    private static void CompileSingle(Type type, Dictionary<string, int> paramsTypeMap)
+    {
+        Dictionary<string, int> singleParamsTypeMap = new Dictionary<string, int>();
+        Dictionary<string, string> methodTypeMap = new Dictionary<string, string>();
+        var methods = type.GetMethods(BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly);
+        int index = 0;
+        foreach (var method in methods)
+        {
+            ParameterInfo[] parameters = method.GetParameters();
+            Type returnType = method.ReturnType;
+            if (parameters.Length > 0 && returnType == typeof(void))
+            {
+                string typeKey = "";
+                index++;
+                for (int i = 0; i < parameters.Length; i++)
+                {
+                    string strType = parameters[i].ParameterType.ToString();
+                    typeKey += strType;
+                    if (i != parameters.Length - 1)
+                    {
+                        typeKey += ", ";
+                    }
+                }
+                if (!paramsTypeMap.ContainsKey(typeKey))
+                {
+                    paramsTypeMap.Add(typeKey, index);
+                }
+                if (!singleParamsTypeMap.ContainsKey(typeKey))
+                {
+                    singleParamsTypeMap.Add(typeKey, index);
+                }
+                if (!methodTypeMap.ContainsKey(method.Name))
+                {
+                    methodTypeMap.Add(method.Name, typeKey);
+                }
+            }
+        }
+
+
+        string nextNameStr = CreateNextNameStr(methods);
+        string methodListStr = CreateMethodListStr(singleParamsTypeMap);
+        string compileStr = "";
+        string methodFindStr = CreateMethodFindStr(singleParamsTypeMap, methodTypeMap, methods, out compileStr);
+        string methodFind = $@"
+    private bool MethodFind(string stepName)
+    {{
+        if(methodFindMap.ContainsKey(stepName))
+        {{
+            return true;
+        }}
+        return false;
+    }}
+";
+
+        string autoStop = $@"
+    public override TabStep AutoCreateStep(Tab tab, string stepName, string updateName, bool force)
+    {{
+        int actionIndex = 0;
+        bool isAutoStop = true;
+        Action updateAction = null;
+        if (methodFindMap.TryGetValue(updateName, out actionIndex))
+        {{
+            isAutoStop = false;
+            updateAction = method0List[actionIndex];
+        }}
+        if (!isAutoStop || force)
+        {{
+            TabStep tabStep = new TabStep(tab, stepName);
+            tabStep.IsAutoStop = isAutoStop;
+            tabStep.UpdateAction = updateAction;
+            return tabStep;
+        }}
+        return null;
+    }}
+";
+
+        string nextStepName = $@"
+    protected override string GetNextStepName(string stepName)
+    {{
+        string name = """";
+        if (!nextNameFindMap.TryGetValue(stepName, out name))
+        {{
+            name = base.GetNextStepName(stepName);
+        }}
+        return name;
+    }}
+";
+
+        string notifyParentDoNext = $@"
+    protected override void NotifyParentDoNext()
+    {{
+        base.NotifyParentDoNextNoConvert();
+    }}
+";
+        string startMethods = CreateOverwriteStarMethodsStr(singleParamsTypeMap);
+        string doEventsMethods = CreateOverwriteDoEventsMethodsStr(singleParamsTypeMap);
+        string notifysMethods = CreateOverwriteNotifyMethodsStr(singleParamsTypeMap);
+        string upwardNotifysMethods = CreateOverwriteUpwardNotifyMethodsStr(singleParamsTypeMap);
+        string className = type.Name;
+        string fileContent = $@"
+using System;
+using System.Collections.Generic;
+using UnityEngine;
+
+public partial class {className} : Tab
+{{
+{nextNameStr}
+{methodFindStr}
+{methodListStr}
+{compileStr}
+{notifyParentDoNext}
+{nextStepName}
+{autoStop}
+{methodFind}
+{startMethods}
+{doEventsMethods}
+{notifysMethods}
+{upwardNotifysMethods}
+}}";
+        File.WriteAllText("Assets/Scripts/TabMachineWrap/" + className + "_warp.cs", fileContent);
+    }
+
     private static string CreateOutputMethodsStr(Dictionary<string, int> paramsTypeMap, out string outputValStr)
     {
         StringWriter stringWriter = new StringWriter();
@@ -186,6 +314,114 @@ public partial class Tab
         string starMethods = stringWriter.ToString();
         stringWriter.Dispose();
         return starMethods;
+    }
+    private static string CreateDoEventMethodsStr(Dictionary<string, int> paramsTypeMap)
+    {
+        string startMethod = $@"
+    public virtual void DoEvent(string eventName)
+    {{
+    }}
+";
+        StringWriter stringWriter = new StringWriter();
+        stringWriter.Write(startMethod);
+        foreach (KeyValuePair<string, int> pairs in paramsTypeMap)
+        {
+            string[] typesList = pairs.Key.Split(',');
+            string strPrams = "";
+            string strInvokePrams = "";
+            for (int i = 0; i < typesList.Length; i++)
+            {
+                strPrams += (typesList[i] + " p" + (i + 1));
+                strInvokePrams += ("p" + (i + 1));
+                if (i < typesList.Length - 1)
+                {
+                    strPrams += (",");
+                    strInvokePrams += (", ");
+                }
+            }
+            startMethod = $@"
+    public virtual void DoEvent(string eventName, {strPrams})
+    {{
+    }}
+";
+            stringWriter.Write(startMethod);
+        }
+
+        string doEventMethods = stringWriter.ToString();
+        stringWriter.Dispose();
+        return doEventMethods;
+    }
+    private static string CreateNotifyMethodsStr(Dictionary<string, int> paramsTypeMap)
+    {
+        string notifyMethod = $@"
+    public virtual void Notify(string eventName)
+    {{
+    }}
+";
+        StringWriter stringWriter = new StringWriter();
+        stringWriter.Write(notifyMethod);
+        foreach (KeyValuePair<string, int> pairs in paramsTypeMap)
+        {
+            string[] typesList = pairs.Key.Split(',');
+            string strPrams = "";
+            string strInvokePrams = "";
+            for (int i = 0; i < typesList.Length; i++)
+            {
+                strPrams += (typesList[i] + " p" + (i + 1));
+                strInvokePrams += ("p" + (i + 1));
+                if (i < typesList.Length - 1)
+                {
+                    strPrams += (",");
+                    strInvokePrams += (", ");
+                }
+            }
+            notifyMethod = $@"
+    public virtual void Notify(string eventName, {strPrams})
+    {{
+    }}
+";
+            stringWriter.Write(notifyMethod);
+        }
+
+        string notifyMethods = stringWriter.ToString();
+        stringWriter.Dispose();
+        return notifyMethods;
+    }
+    private static string CreateUpwardNotifyMethodsStr(Dictionary<string, int> paramsTypeMap)
+    {
+        string notifyMethod = $@"
+    public virtual void UpwardNotify(string eventName)
+    {{
+    }}
+";
+        StringWriter stringWriter = new StringWriter();
+        stringWriter.Write(notifyMethod);
+        foreach (KeyValuePair<string, int> pairs in paramsTypeMap)
+        {
+            string[] typesList = pairs.Key.Split(',');
+            string strPrams = "";
+            string strInvokePrams = "";
+            for (int i = 0; i < typesList.Length; i++)
+            {
+                strPrams += (typesList[i] + " p" + (i + 1));
+                strInvokePrams += ("p" + (i + 1));
+                if (i < typesList.Length - 1)
+                {
+                    strPrams += (",");
+                    strInvokePrams += (", ");
+                }
+            }
+            notifyMethod = $@"
+    public virtual void UpwardNotify(string eventName, {strPrams})
+    {{
+    }}
+";
+            stringWriter.Write(notifyMethod);
+        }
+
+        string notifyMethods = stringWriter.ToString();
+        stringWriter.Dispose();
+        return notifyMethods;
     }
     private static string CreateDoNextMethodsStr(Dictionary<string, int> paramsTypeMap)
     {
@@ -442,100 +678,8 @@ public partial class Tab
         return methodFindStr;
 
     }
-    private static void CompileSingle(Type type, Dictionary<string, int> paramsTypeMap)
+    private static string CreateOverwriteStarMethodsStr(Dictionary<string, int> singleParamsTypeMap)
     {
-        Dictionary<string, int> singleParamsTypeMap = new Dictionary<string, int>();
-        Dictionary<string, string> methodTypeMap = new Dictionary<string, string>();
-        var methods = type.GetMethods(BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly);
-        int index = 0;
-        foreach (var method in methods)
-        {
-            ParameterInfo[] parameters = method.GetParameters();
-            Type returnType = method.ReturnType;
-            if (parameters.Length > 0 && returnType == typeof(void))
-            {
-                string typeKey = "";
-                index++;
-                for (int i = 0; i < parameters.Length; i++)
-                {
-                    string strType = parameters[i].ParameterType.ToString();
-                    typeKey += strType;
-                    if (i != parameters.Length - 1)
-                    {
-                        typeKey += ", ";
-                    }
-                }
-                if (!paramsTypeMap.ContainsKey(typeKey))
-                {
-                    paramsTypeMap.Add(typeKey, index);
-                }
-                if (!singleParamsTypeMap.ContainsKey(typeKey))
-                {
-                    singleParamsTypeMap.Add(typeKey, index);
-                }
-                if (!methodTypeMap.ContainsKey(method.Name))
-                {
-                    methodTypeMap.Add(method.Name, typeKey);
-                }
-            }
-        }
-
-
-        string nextNameStr = CreateNextNameStr(methods);
-        string methodListStr = CreateMethodListStr(singleParamsTypeMap);
-        string compileStr = "";
-        string methodFindStr = CreateMethodFindStr(singleParamsTypeMap, methodTypeMap, methods, out compileStr);
-        string methodFind = $@"
-    private bool MethodFind(string stepName)
-    {{
-        if(methodFindMap.ContainsKey(stepName))
-        {{
-            return true;
-        }}
-        return false;
-    }}
-";
-
-        string autoStop = $@"
-    public override TabStep AutoCreateStep(Tab tab, string stepName, string updateName, string eventName, bool force)
-    {{
-        int actionIndex = 0;
-        bool isAutoStop = true;
-        Action updateAction = null;
-        if (methodFindMap.TryGetValue(updateName, out actionIndex))
-        {{
-            isAutoStop = false;
-            updateAction = method0List[actionIndex];
-        }}
-        if (!isAutoStop || force)
-        {{
-            TabStep tabStep = new TabStep(tab, stepName);
-            tabStep.IsAutoStop = isAutoStop;
-            tabStep.UpdateAction = updateAction;
-            return tabStep;
-        }}
-        return null;
-    }}
-";
-
-        string nextStepName = $@"
-    protected override string GetNextStepName(string stepName)
-    {{
-        string name = """";
-        if (!nextNameFindMap.TryGetValue(stepName, out name))
-        {{
-            name = base.GetNextStepName(stepName);
-        }}
-        return name;
-    }}
-";
-
-        string notifyParentDoNext = $@"
-    protected override void NotifyParentDoNext()
-    {{
-        base.NotifyParentDoNextNoConvert();
-    }}
-";
 
         string methodName = "method0List";
         string startMethod = $@"
@@ -544,7 +688,7 @@ public partial class Tab
         int insertIndex = 0;
         if (methodFindMap.TryGetValue(stepName, out insertIndex))
         {{
-            TabStep tabStep = AutoCreateStep(this, stepName, stepName + ""_update"", stepName + ""_event"", false);
+            TabStep tabStep = AutoCreateStep(this, stepName, stepName + ""_update"", false);
             if (tabStep == null)
             {{
                 MainStep.InWork = true;
@@ -598,7 +742,7 @@ public partial class Tab
         int insertIndex = 0;
         if (methodFindMap.TryGetValue(stepName, out insertIndex))
         {{
-            TabStep tabStep = AutoCreateStep(this, stepName, stepName + ""_update"", stepName + ""_event"", false);
+            TabStep tabStep = AutoCreateStep(this, stepName, stepName + ""_update"", false);
             if (tabStep == null)
             {{
                 MainStep.InWork = true;
@@ -632,34 +776,175 @@ public partial class Tab
         }
         string startMethods = stringWriter.ToString();
         stringWriter.Dispose();
+        return startMethods;
+    }
+    private static string CreateOverwriteDoEventsMethodsStr(Dictionary<string, int> singleParamsTypeMap)
+    {
 
-        string className = type.Name;
-        string fileContent = $@"
-using System;
-using System.Collections.Generic;
-using UnityEngine;
+        string methodName = "method0List";
+        string startMethod = $@"
+    public override void DoEvent(string eventName)
+    {{
+        int insertIndex = 0;
+        if (methodFindMap.TryGetValue(eventName, out insertIndex))
+        {{
+            Action action = {methodName}[insertIndex];
+            try
+            {{
+                action.Invoke();
+            }}
+            catch (System.Exception e)
+            {{
+                Debug.LogError(string.Format(""Message: { 0}\nStackTrace: { 1} "", e.Message, e.StackTrace));
+            }}
+        }}
+    }}
+";
+        StringWriter stringWriter = new StringWriter();
+        stringWriter.Write(startMethod);
+        foreach (KeyValuePair<string, int> pairs in singleParamsTypeMap)
+        {
+            methodName = "method" + pairs.Value + "List";
+            string[] types = pairs.Key.Split(',');
+            string strPrams = "";
+            string strInvokePrams = "";
+            for (int i = 0; i < types.Length; i++)
+            {
+                strPrams += (types[i] + " p" + (i + 1));
+                strInvokePrams += ("p" + (i + 1));
+                if (i < types.Length - 1)
+                {
+                    strPrams += (",");
+                    strInvokePrams += (", ");
+                }
+            }
+            startMethod = $@"
+    public override void DoEvent(string eventName, {strPrams})
+    {{
+        int insertIndex = 0;
+        if (methodFindMap.TryGetValue(eventName, out insertIndex))
+        {{
+            Action<{pairs.Key}> action = {methodName}[insertIndex];
+            try
+            {{
+                action.Invoke({strInvokePrams});
+            }}
+            catch (System.Exception e)
+            {{
+                Debug.LogError(string.Format(""Message: { 0}\nStackTrace: { 1} "", e.Message, e.StackTrace));
+            }}
+        }}
+    }}
+";
+            stringWriter.Write(startMethod);
+        }
+        string doEventsMethods = stringWriter.ToString();
+        stringWriter.Dispose();
+        return doEventsMethods;
+    }
+    private static string CreateOverwriteNotifyMethodsStr(Dictionary<string, int> singleParamsTypeMap)
+    {
 
-public partial class {className} : Tab
-{{
-{nextNameStr}
-{methodFindStr}
-{methodListStr}
-{compileStr}
-{notifyParentDoNext}
-{nextStepName}
-{autoStop}
-{methodFind}
-{startMethods}
-}}";
-        File.WriteAllText("Assets/Scripts/TabMachineWrap/" + className+"_warp.cs", fileContent);
-        //FieldInfo[] fields = type.GetFields(BindingFlags.NonPublic | BindingFlags.Instance);
-        //for (int i = 0; i < fields.Length; i++)
-        //{
-        //    FieldInfo field = fields[i];
-        //    if (field.Name == "_outPut" && field.FieldType.IsGenericType)
-        //    {
-        //        Type[] tupleElementTypes = field.FieldType.GetGenericArguments();
-        //    }
-        //}
+        string methodName = "method0List";
+        string startMethod = $@"
+    public override void Notify(string eventName)
+    {{
+        eventName = ""event_"" + eventName;
+        for (int i = 0; i < _stepList.Count; i++)
+        {{ 
+            TabStep tabStep = _stepList[i];
+            if (!tabStep.IsStop && tabStep.Tab != this)
+            {{
+                tabStep.Tab.DoEvent(eventName);
+            }}
+        }}
+    }}
+";
+        StringWriter stringWriter = new StringWriter();
+        stringWriter.Write(startMethod);
+        foreach (KeyValuePair<string, int> pairs in singleParamsTypeMap)
+        {
+            methodName = "method" + pairs.Value + "List";
+            string[] types = pairs.Key.Split(',');
+            string strPrams = "";
+            string strInvokePrams = "";
+            for (int i = 0; i < types.Length; i++)
+            {
+                strPrams += (types[i] + " p" + (i + 1));
+                strInvokePrams += ("p" + (i + 1));
+                if (i < types.Length - 1)
+                {
+                    strPrams += (",");
+                    strInvokePrams += (", ");
+                }
+            }
+            startMethod = $@"
+    public override void Notify(string eventName, {strPrams})
+    {{
+        eventName = ""event_"" + eventName;
+        for (int i = 0; i < _stepList.Count; i++)
+        {{ 
+            TabStep tabStep = _stepList[i];
+            if (!tabStep.IsStop && tabStep.Tab != this)
+            {{
+                tabStep.Tab.DoEvent(eventName, {strInvokePrams});
+            }}
+        }}
+    }}
+";
+            stringWriter.Write(startMethod);
+        }
+        string doEventsMethods = stringWriter.ToString();
+        stringWriter.Dispose();
+        return doEventsMethods;
+    }
+
+    private static string CreateOverwriteUpwardNotifyMethodsStr(Dictionary<string, int> singleParamsTypeMap)
+    {
+
+        string methodName = "method0List";
+        string startMethod = $@"
+    public override void UpwardNotify(string eventName)
+    {{
+        if (ParentTab != null && ParentTab.MainStep != null && !ParentTab.MainStep.IsStop)
+        {{
+            eventName = ""event_"" + eventName;
+            ParentTab.DoEvent(eventName);
+        }}
+    }}
+";
+        StringWriter stringWriter = new StringWriter();
+        stringWriter.Write(startMethod);
+        foreach (KeyValuePair<string, int> pairs in singleParamsTypeMap)
+        {
+            methodName = "method" + pairs.Value + "List";
+            string[] types = pairs.Key.Split(',');
+            string strPrams = "";
+            string strInvokePrams = "";
+            for (int i = 0; i < types.Length; i++)
+            {
+                strPrams += (types[i] + " p" + (i + 1));
+                strInvokePrams += ("p" + (i + 1));
+                if (i < types.Length - 1)
+                {
+                    strPrams += (",");
+                    strInvokePrams += (", ");
+                }
+            }
+            startMethod = $@"
+    public override void UpwardNotify(string eventName, {strPrams})
+    {{
+        if (ParentTab != null && ParentTab.MainStep != null && !ParentTab.MainStep.IsStop)
+        {{
+            eventName = ""event_"" + eventName;
+            ParentTab.DoEvent(eventName, {strInvokePrams});
+        }}
+    }}
+";
+            stringWriter.Write(startMethod);
+        }
+        string doEventsMethods = stringWriter.ToString();
+        stringWriter.Dispose();
+        return doEventsMethods;
     }
 }
