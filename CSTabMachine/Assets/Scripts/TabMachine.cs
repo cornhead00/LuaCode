@@ -111,6 +111,7 @@ public partial class Tab
     protected List<ProxyTab> _proxyList;
 
     private int _resultIndex = -1;
+    private int _resultParamCount = -1;
     public List<TabStep> StepList
     {
         get {
@@ -202,7 +203,7 @@ public partial class Tab
             object[] newParam = null;
             int paramLen = mainMethod.GetParameters().Length;
             int paramInfactLen = param == null ? 0 : param.Length;
-            if (paramInfactLen != paramLen)
+            if (paramInfactLen != paramLen && paramLen > 0)
             {
                 newParam = new object[paramLen];
                 for (int i = 0; i < paramLen; i++)
@@ -232,7 +233,7 @@ public partial class Tab
                     }
                 }
             }
-            else
+            else if (paramLen > 0)
             {
                 newParam = param;
             }
@@ -274,7 +275,7 @@ public partial class Tab
             Stop();
         }
     }
-    protected virtual string GetNextStepName(string stepName)
+    public virtual string GetNextStepName(string stepName)
     {
         string result;
         char lastChar = stepName[stepName.Length - 1];

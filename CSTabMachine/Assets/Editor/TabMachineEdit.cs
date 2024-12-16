@@ -60,11 +60,20 @@ public static class CompileTabMachine
         string notifysMethods = CreateNotifyMethodsStr(paramsTypeMap);
         string upwardNotifyMethods = CreateUpwardNotifyMethodsStr(paramsTypeMap);
 
+        string getMethodParamLen = $@"
+    public virtual bool GetMethodParamLen(string methodName, out int paramsLen)
+    {{
+        paramsLen = 0;
+        return false;
+    }}
+";
+
         string fileContent = $@"
 using System;
 public partial class Tab
 {{
     {ouputResultStr}
+    {getMethodParamLen}
     {notifyParentDoNextMethod}
     {ouputMethods}
     {callMethods}
@@ -119,12 +128,13 @@ public partial class Tab
 
         string nextNameStr = CreateNextNameStr(methods);
         string methodListStr = CreateMethodListStr(singleParamsTypeMap);
-        string compileStr = "";
-        string methodFindStr = CreateMethodFindStr(singleParamsTypeMap, methodTypeMap, methods, out compileStr);
+        string methodFindStr = "";
+        string methodParamsLenStr = "";
+        string compileStr = CreateMethodFindStr(singleParamsTypeMap, methodTypeMap, methods, out methodFindStr, out methodParamsLenStr);
         string methodFind = $@"
     private bool MethodFind(string stepName)
     {{
-        if(methodFindMap.ContainsKey(stepName))
+        if(methodIndexMap.ContainsKey(stepName))
         {{
             return true;
         }}
@@ -155,7 +165,7 @@ public partial class Tab
 ";
 
         string nextStepName = $@"
-    protected override string GetNextStepName(string stepName)
+    public override string GetNextStepName(string stepName)
     {{
         string name = """";
         if (!nextNameFindMap.TryGetValue(stepName, out name))
@@ -168,7 +178,7 @@ public partial class Tab
         string getMethodIndex = $@"
     public override bool GetMethodIndex(string methodName, out int methodIndex)
     {{
-        return methodFindMap.TryGetValue(methodName, out methodIndex);
+        return methodIndexMap.TryGetValue(methodName, out methodIndex);
     }}
 ";
 
@@ -178,6 +188,14 @@ public partial class Tab
         base.NotifyParentDoNextNoConvert();
     }}
 ";
+
+        string getMethodParamLen = $@"
+    public override bool GetMethodParamLen(string methodName, out int paramsLen)
+    {{
+        return MethodParamsLenMap.TryGetValue(nextName, out paramsLen)
+    }}
+";
+
         string startMethods = CreateOverwriteStarMethodsStr(singleParamsTypeMap);
         string doEventsMethods = CreateOverwriteDoEventsMethodsStr(singleParamsTypeMap);
         string notifysMethods = CreateOverwriteNotifyMethodsStr(singleParamsTypeMap);
@@ -192,6 +210,7 @@ public partial class {className} : Tab
 {{
 {nextNameStr}
 {methodFindStr}
+{methodParamsLenStr}
 {methodListStr}
 {compileStr}
 {notifyParentDoNext}
@@ -234,6 +253,7 @@ public partial class {className} : Tab
     public void Output({strPrams})
     {{
         _resultIndex = {pairs.Value};
+        _resultParamCount = {typesList.Length};
         _result{pairs.Value} = ({strInvokePrams});
     }}
 ";
@@ -318,18 +338,18 @@ public partial class {className} : Tab
             {
                 strPrams += (typesList[i] + " p" + (i + 1));
                 strInvokePrams += ("p" + (i + 1));
+                startMethod = $@"
+    public virtual void Start(string stepName, {strPrams})
+    {{
+    }}
+";
+                stringWriter.Write(startMethod);
                 if (i < typesList.Length - 1)
                 {
                     strPrams += (",");
                     strInvokePrams += (", ");
                 }
             }
-            startMethod = $@"
-    public virtual void Start(string stepName, {strPrams})
-    {{
-    }}
-";
-            stringWriter.Write(startMethod);
         }
 
         string starMethods = stringWriter.ToString();
@@ -354,18 +374,18 @@ public partial class {className} : Tab
             {
                 strPrams += (typesList[i] + " p" + (i + 1));
                 strInvokePrams += ("p" + (i + 1));
+                startMethod = $@"
+    public virtual void DoEvent(string eventName, {strPrams})
+    {{
+    }}
+";
+                stringWriter.Write(startMethod);
                 if (i < typesList.Length - 1)
                 {
                     strPrams += (",");
                     strInvokePrams += (", ");
                 }
             }
-            startMethod = $@"
-    public virtual void DoEvent(string eventName, {strPrams})
-    {{
-    }}
-";
-            stringWriter.Write(startMethod);
         }
 
         string doEventMethods = stringWriter.ToString();
@@ -506,7 +526,7 @@ public partial class {className} : Tab
                 }
             }
             string condition = $@"
-            else if (_resultIndex == {pairs.Value})
+            else if (paramsLen == {pairs.Value})
             {{
                 {conditionInfo}
                 return;
@@ -530,7 +550,22 @@ public partial class {className} : Tab
             ParentTab.DoNext(Name);
             return;
         }}
-        {notifyParentDoNextNoConvertInfo}
+        string nextName = ParentTab.GetNextStepName(Name);
+        int paramsLen = 0;
+        if (ParentTab.GetMethodParamLen(nextName, out paramsLen))
+        {{
+            if (paramsLen == 0)
+            {{
+                ParentTab.DoNext(Name);
+                return;
+            }}
+            {notifyParentDoNextNoConvertInfo}
+        }}
+        else
+        {{
+            ParentTab.DoNext(Name);
+            return;
+        }}
     }}
 ";
 
@@ -628,16 +663,29 @@ public partial class {className} : Tab
         StringWriter stringWriter = new StringWriter();
         foreach (KeyValuePair<string, int> pairs in singleParamsTypeMap)
         {
-            stringWriter.WriteLine($"   List<Action<{pairs.Key}>> method{pairs.Value}List = new List<Action<{pairs.Key}>>();");
+            string[] types = pairs.Key.Split(',');
+            int index = 0;
+            string strTypes = "";
+            for (int i = 0; i < types.Length; i++)
+            {
+                index++;
+                strTypes += types[i];
+                stringWriter.WriteLine($"   List<Action<{strTypes}>> method{pairs.Value * 10000 + index}List = new List<Action<{strTypes}>>();");
+                if (i != types.Length)
+                {
+                    strTypes += ", ";
+                }
+            }
         }
         string result = stringWriter.ToString();
         stringWriter.Dispose();
         return result;
     }
-    private static string CreateMethodFindStr(Dictionary<string, int> singleParamsTypeMap, Dictionary<string, string> methodTypeMap, MethodInfo[] methods, out string compileStr)
+    private static string CreateMethodFindStr(Dictionary<string, int> singleParamsTypeMap, Dictionary<string, string> methodTypeMap, MethodInfo[] methods, out string methodFindStr, out string paramsLenStr)
     {
         StringWriter stringWriter = new StringWriter();
-        string methodFindInfoStr = "";
+        string methodFindMethodIndexInfoStr = "";
+        string methodFindParamCountInfoStr = "";
         Dictionary<int, int> methodMap = new Dictionary<int, int>();
         for (int i = 0; i < methods.Length; i++)
         {
@@ -652,6 +700,8 @@ public partial class {className} : Tab
                 {
                     if (singleParamsTypeMap.TryGetValue(paramsTypeStr, out paramsTypeIndex))
                     {
+                        string[] typesList = paramsTypeStr.Split(',');
+                        paramsTypeIndex = paramsTypeIndex * 10000 + typesList.Length;
                     }
                     else
                     {
@@ -671,10 +721,15 @@ public partial class {className} : Tab
                 {
                     mothodIndex = 0;
                 }
-                methodFindInfoStr += ($"{{\"{method.Name}\", {mothodIndex}}}");
+                methodFindMethodIndexInfoStr += ($"{{\"{method.Name}\", {mothodIndex}}}");
                 if (i != methods.Length - 1)
                 {
-                    methodFindInfoStr += ", ";
+                    methodFindMethodIndexInfoStr += ", ";
+                }
+                methodFindParamCountInfoStr += ($"{{\"{method.Name}\", {method.GetParameters().Length}}}");
+                if (i != methods.Length - 1)
+                {
+                    methodFindParamCountInfoStr += ", ";
                 }
                 mothodIndex++;
                 methodMap[paramsTypeIndex] = mothodIndex;
@@ -687,17 +742,23 @@ public partial class {className} : Tab
         stringWriter.Dispose();
 
         StringWriter stringWriter2 = new StringWriter();
-        stringWriter2.WriteLine($"   static Dictionary<string, int> methodFindMap = new Dictionary<string, int>(){{{methodFindInfoStr}}};");
-        string methodFindStr = stringWriter2.ToString();
+        stringWriter2.WriteLine($"   static Dictionary<string, int> methodIndexMap = new Dictionary<string, int>(){{{methodFindMethodIndexInfoStr}}};");
+        methodFindStr = stringWriter2.ToString();
         stringWriter2.Dispose();
 
-        compileStr = $@"
+        StringWriter stringWriter3 = new StringWriter();
+        stringWriter3.WriteLine($"   public static Dictionary<string, int> MethodParamsLenMap = new Dictionary<string, int>(){{{methodFindParamCountInfoStr}}};");
+        paramsLenStr = stringWriter3.ToString();
+        stringWriter3.Dispose();
+        
+
+        string compileStr = $@"
     protected override void Compile()
     {{
     {compileInfoStr}
     }}
 ";
-        return methodFindStr;
+        return compileStr;
 
     }
     private static string CreateOverwriteStarMethodsStr(Dictionary<string, int> singleParamsTypeMap)
@@ -708,7 +769,7 @@ public partial class {className} : Tab
     public override void Start(string stepName)
     {{
         int insertIndex = 0;
-        if (methodFindMap.TryGetValue(stepName, out insertIndex))
+        if (methodIndexMap.TryGetValue(stepName, out insertIndex))
         {{
             TabStep tabStep = AutoCreateStep(this, stepName, stepName + ""_update"", false);
             if (tabStep == null)
@@ -744,25 +805,23 @@ public partial class {className} : Tab
         stringWriter.Write(startMethod);
         foreach (KeyValuePair<string, int> pairs in singleParamsTypeMap)
         {
-            methodName = "method" + pairs.Value + "List";
             string[] types = pairs.Key.Split(',');
             string strPrams = "";
             string strInvokePrams = "";
+            string strTypes = "";
+            int index = 0;
             for (int i = 0; i < types.Length; i++)
             {
                 strPrams += (types[i] + " p" + (i + 1));
                 strInvokePrams += ("p" + (i + 1));
-                if (i < types.Length - 1)
-                {
-                    strPrams += (",");
-                    strInvokePrams += (", ");
-                }
-            }
-            startMethod = $@"
+                strTypes += types[i];
+                index++;
+                methodName = "method" + (pairs.Value * 10000 + index) + "List";
+                startMethod = $@"
     public override void Start(string stepName, {strPrams})
     {{
         int insertIndex = 0;
-        if (methodFindMap.TryGetValue(stepName, out insertIndex))
+        if (methodIndexMap.TryGetValue(stepName, out insertIndex))
         {{
             TabStep tabStep = AutoCreateStep(this, stepName, stepName + ""_update"", false);
             if (tabStep == null)
@@ -773,7 +832,7 @@ public partial class {className} : Tab
             {{
                 _stepList.Add(tabStep);
             }}           
-            Action<{pairs.Key}> action = {methodName}[insertIndex];
+            Action<{strTypes}> action = {methodName}[insertIndex];
             try
             {{
                 action.Invoke({strInvokePrams});
@@ -794,7 +853,14 @@ public partial class {className} : Tab
         }}
     }}
 ";
-            stringWriter.Write(startMethod);
+                stringWriter.Write(startMethod);
+                if (i < types.Length - 1)
+                {
+                    strPrams += (",");
+                    strInvokePrams += (", ");
+                    strTypes += (", ");
+                }
+            }
         }
         string startMethods = stringWriter.ToString();
         stringWriter.Dispose();
@@ -808,7 +874,7 @@ public partial class {className} : Tab
     public override void DoEvent(string eventName)
     {{
         int insertIndex = 0;
-        if (methodFindMap.TryGetValue(eventName, out insertIndex))
+        if (methodIndexMap.TryGetValue(eventName, out insertIndex))
         {{
             Action action = {methodName}[insertIndex];
             try
@@ -826,27 +892,25 @@ public partial class {className} : Tab
         stringWriter.Write(startMethod);
         foreach (KeyValuePair<string, int> pairs in singleParamsTypeMap)
         {
-            methodName = "method" + pairs.Value + "List";
             string[] types = pairs.Key.Split(',');
             string strPrams = "";
             string strInvokePrams = "";
+            string strType = "";
+            int index = 0;
             for (int i = 0; i < types.Length; i++)
             {
                 strPrams += (types[i] + " p" + (i + 1));
                 strInvokePrams += ("p" + (i + 1));
-                if (i < types.Length - 1)
-                {
-                    strPrams += (",");
-                    strInvokePrams += (", ");
-                }
-            }
-            startMethod = $@"
+                index++;
+                strType += types[i];
+                methodName = "method" + (pairs.Value * 10000 + index) + "List";
+                startMethod = $@"
     public override void DoEvent(string eventName, {strPrams})
     {{
         int insertIndex = 0;
-        if (methodFindMap.TryGetValue(eventName, out insertIndex))
+        if (methodIndexMap.TryGetValue(eventName, out insertIndex))
         {{
-            Action<{pairs.Key}> action = {methodName}[insertIndex];
+            Action<{strType}> action = {methodName}[insertIndex];
             try
             {{
                 action.Invoke({strInvokePrams});
@@ -858,7 +922,14 @@ public partial class {className} : Tab
         }}
     }}
 ";
-            stringWriter.Write(startMethod);
+                stringWriter.Write(startMethod);
+                if (i < types.Length - 1)
+                {
+                    strPrams += (",");
+                    strInvokePrams += (", ");
+                    strType += (", ");
+                }
+            }
         }
         string doEventsMethods = stringWriter.ToString();
         stringWriter.Dispose();
