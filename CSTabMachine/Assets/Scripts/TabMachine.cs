@@ -16,7 +16,7 @@ public class TabMachine : MonoBehaviour
         instance = this;
         gameFlow = new GameFlowTab();
         gameFlow.Initstall();
-        gameFlow.Start("s1", 1, 2);
+        gameFlow.Start("s1", 1);
     }
     private void Update()
     {
@@ -199,9 +199,46 @@ public partial class Tab
             {
                 _stepList.Add(tabStep);
             }
+            object[] newParam = null;
+            int paramLen = mainMethod.GetParameters().Length;
+            int paramInfactLen = param == null ? 0 : param.Length;
+            if (paramInfactLen != paramLen)
+            {
+                newParam = new object[paramLen];
+                for (int i = 0; i < paramLen; i++)
+                {
+                    if (i < paramInfactLen)
+                    {
+                        newParam[i] = param[i];
+                    }
+                    else
+                    {
+                        ParameterInfo paramInfo = mainMethod.GetParameters()[i];
+                        if (paramInfo.HasDefaultValue)
+                        {
+                            newParam[i] = paramInfo.DefaultValue;
+                        }
+                        else
+                        {
+                            if (paramInfo.GetType().IsPrimitive)
+                            {
+                                newParam[i] = 0;
+                            }
+                            else
+                            {
+                                newParam[i] = null;
+                            }
+                        }
+                    }
+                }
+            }
+            else
+            {
+                newParam = param;
+            }
             try
             {
-                mainMethod.Invoke(this, param);
+                mainMethod.Invoke(this, newParam);
             }
             catch (System.Exception e)
             {
@@ -427,7 +464,7 @@ public partial class AliveTab : Tab
 public partial class GameFlowTab : Tab
 {
     int count = 0;
-    void s1(int a, int b)
+    void s1(int a, int b = 4)
     {
         Debug.LogError("1X" + (a + b));
         System.Diagnostics.Stopwatch stopwatch = new System.Diagnostics.Stopwatch();
