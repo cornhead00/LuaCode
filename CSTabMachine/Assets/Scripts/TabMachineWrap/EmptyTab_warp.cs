@@ -7,10 +7,11 @@ public partial class EmptyTab : Tab
 {
    static Dictionary<string, string> nextNameFindMap = new Dictionary<string, string>(){};
 
-   static Dictionary<string, int> methodIndexMap = new Dictionary<string, int>(){};
+   static Dictionary<string, bool> methodFindMap = new Dictionary<string, bool>(){};
 
-   public static Dictionary<string, int> MethodParamsLenMap = new Dictionary<string, int>(){};
+   static Dictionary<string, int> methodParamsLenMap = new Dictionary<string, int>(){};
 
+   Dictionary<string, Action> method0Map = new Dictionary<string, Action>();
 
 
     protected override void Compile()
@@ -38,13 +39,11 @@ public partial class EmptyTab : Tab
 
     public override TabStep AutoCreateStep(Tab tab, string stepName, string updateName, bool force)
     {
-        int actionIndex = 0;
         bool isAutoStop = true;
         Action updateAction = null;
-        if (tab.GetMethodIndex(updateName, out actionIndex))
+        if (tab.GetMethod(updateName, out updateAction))
         {
             isAutoStop = false;
-            updateAction = tab.method0List[actionIndex];
         }
         if (!isAutoStop || force)
         {
@@ -57,15 +56,15 @@ public partial class EmptyTab : Tab
     }
 
 
-    public override bool GetMethodIndex(string methodName, out int methodIndex)
+    public override bool GetMethod(string methodName, out Action action)
     {
-        return methodIndexMap.TryGetValue(methodName, out methodIndex);
+        return method0Map.TryGetValue(methodName, out action);
     }
 
 
     private bool MethodFind(string stepName)
     {
-        if(methodIndexMap.ContainsKey(stepName))
+        if(methodFindMap.ContainsKey(stepName))
         {
             return true;
         }
@@ -73,10 +72,11 @@ public partial class EmptyTab : Tab
     }
 
 
+
     public override void Start(string stepName)
     {
-        int insertIndex = 0;
-        if (methodIndexMap.TryGetValue(stepName, out insertIndex))
+        Action action;
+        if (method0Map.TryGetValue(stepName, out action))
         {
             TabStep tabStep = AutoCreateStep(this, stepName, stepName + "_update", false);
             if (tabStep == null)
@@ -86,8 +86,7 @@ public partial class EmptyTab : Tab
             else
             {
                 _stepList.Add(tabStep);
-            }
-            Action action = method0List[insertIndex];            
+            }        
             try
             {
                 action.Invoke();
@@ -111,10 +110,9 @@ public partial class EmptyTab : Tab
 
     public override void DoEvent(string eventName)
     {
-        int insertIndex = 0;
-        if (methodIndexMap.TryGetValue(eventName, out insertIndex))
+        Action action;
+        if (method0Map.TryGetValue(eventName, out action))
         {
-            Action action = method0List[insertIndex];
             try
             {
                 action.Invoke();

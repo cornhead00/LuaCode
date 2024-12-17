@@ -103,9 +103,8 @@ public partial class Tab
             return MainStep.IsAutoStop;
         }
     }
-    protected static Dictionary<Type, Dictionary<string, MethodInfo>> _allMethodList = new Dictionary<Type, Dictionary<string, MethodInfo>>();
+    protected static Dictionary<Type, Dictionary<string, MethodInfo>> _allMethodList;
     protected Dictionary<string, MethodInfo> _methodList;
-    public List<Action> method0List = new List<Action>();
     protected List<TabStep> _stepList = new List<TabStep>();
     protected System.Object[] _result = null;
     protected List<ProxyTab> _proxyList;
@@ -120,6 +119,10 @@ public partial class Tab
     }
     protected virtual void Compile()
     {
+        if (_allMethodList == null)
+        {
+            _allMethodList = new Dictionary<Type, Dictionary<string, MethodInfo>>();
+        }
         Type type = GetType();
         if (_allMethodList.TryGetValue(type, out _methodList))
         {
@@ -484,9 +487,9 @@ public partial class GameFlowTab : Tab
     {
         Debug.LogError("1t");
     }
-    void s3(int a, int b)
+    void s3(int a)
     {
-        Debug.LogError("2X" + (a + b));
+        Debug.LogError("2X");
     }
     void update()
     {

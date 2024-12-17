@@ -7,21 +7,24 @@ public partial class GamePlayTab : Tab
 {
    static Dictionary<string, string> nextNameFindMap = new Dictionary<string, string>(){{"s1", "s2"}, {"s1_update", "s1_update1"}, {"event_stop", "event_stop1"}, {"s2", "s3"}, {"Final", "Final1"}};
 
-   static Dictionary<string, int> methodIndexMap = new Dictionary<string, int>(){{"s1", 0}, {"s1_update", 0}, {"event_stop", 1}, {"s2", 2}, {"Final", 3}};
+   static Dictionary<string, bool> methodFindMap = new Dictionary<string, bool>(){{"s1", true}, {"s1_update", true}, {"event_stop", true}, {"s2", true}, {"Final", true}};
 
-   public static Dictionary<string, int> MethodParamsLenMap = new Dictionary<string, int>(){{"s1", 2}, {"s1_update", 0}, {"event_stop", 0}, {"s2", 0}, {"Final", 0}};
+   static Dictionary<string, int> methodParamsLenMap = new Dictionary<string, int>(){{"s1", 2}, {"s1_update", 0}, {"event_stop", 0}, {"s2", 0}, {"Final", 0}};
 
-   List<Action<System.Int32>> method10001List = new List<Action<System.Int32>>();
-   List<Action<System.Int32,  System.Int32>> method10002List = new List<Action<System.Int32,  System.Int32>>();
+   Dictionary<string, Action> method0Map = new Dictionary<string, Action>();
+   Dictionary<string, Action<System.Int32>> method1Map = new Dictionary<string, Action<System.Int32>>();
+   Dictionary<string, Action<System.Int32,System.Int32>> method2Map = new Dictionary<string, Action<System.Int32,System.Int32>>();
 
 
     protected override void Compile()
     {
-       method10002List.Add(this.s1);
-   method0List.Add(this.s1_update);
-   method0List.Add(this.event_stop);
-   method0List.Add(this.s2);
-   method0List.Add(this.Final);
+       method0Map.Add("s1", this.s1);
+   method1Map.Add("s1", this.s1);
+   method2Map.Add("s1", this.s1);
+   method0Map.Add("s1_update", this.s1_update);
+   method0Map.Add("event_stop", this.event_stop);
+   method0Map.Add("s2", this.s2);
+   method0Map.Add("Final", this.Final);
 
     }
 
@@ -45,13 +48,11 @@ public partial class GamePlayTab : Tab
 
     public override TabStep AutoCreateStep(Tab tab, string stepName, string updateName, bool force)
     {
-        int actionIndex = 0;
         bool isAutoStop = true;
         Action updateAction = null;
-        if (tab.GetMethodIndex(updateName, out actionIndex))
+        if (tab.GetMethod(updateName, out updateAction))
         {
             isAutoStop = false;
-            updateAction = tab.method0List[actionIndex];
         }
         if (!isAutoStop || force)
         {
@@ -64,15 +65,15 @@ public partial class GamePlayTab : Tab
     }
 
 
-    public override bool GetMethodIndex(string methodName, out int methodIndex)
+    public override bool GetMethod(string methodName, out Action action)
     {
-        return methodIndexMap.TryGetValue(methodName, out methodIndex);
+        return method0Map.TryGetValue(methodName, out action);
     }
 
 
     private bool MethodFind(string stepName)
     {
-        if(methodIndexMap.ContainsKey(stepName))
+        if(methodFindMap.ContainsKey(stepName))
         {
             return true;
         }
@@ -80,10 +81,21 @@ public partial class GamePlayTab : Tab
     }
 
 
+    void s1()
+    {
+        this.s1((System.Int32)0,(System.Int32)0);
+    }
+
+    void s1(System.Int32 p1)
+    {
+        this.s1(p1,(System.Int32)0);
+    }
+
+
     public override void Start(string stepName)
     {
-        int insertIndex = 0;
-        if (methodIndexMap.TryGetValue(stepName, out insertIndex))
+        Action action;
+        if (method0Map.TryGetValue(stepName, out action))
         {
             TabStep tabStep = AutoCreateStep(this, stepName, stepName + "_update", false);
             if (tabStep == null)
@@ -93,8 +105,7 @@ public partial class GamePlayTab : Tab
             else
             {
                 _stepList.Add(tabStep);
-            }
-            Action action = method0List[insertIndex];            
+            }        
             try
             {
                 action.Invoke();
@@ -117,8 +128,8 @@ public partial class GamePlayTab : Tab
 
     public override void Start(string stepName, System.Int32 p1)
     {
-        int insertIndex = 0;
-        if (methodIndexMap.TryGetValue(stepName, out insertIndex))
+        Action<System.Int32> action;
+        if (method1Map.TryGetValue(stepName, out action))
         {
             TabStep tabStep = AutoCreateStep(this, stepName, stepName + "_update", false);
             if (tabStep == null)
@@ -129,7 +140,6 @@ public partial class GamePlayTab : Tab
             {
                 _stepList.Add(tabStep);
             }           
-            Action<System.Int32> action = method10001List[insertIndex];
             try
             {
                 action.Invoke(p1);
@@ -150,10 +160,10 @@ public partial class GamePlayTab : Tab
         }
     }
 
-    public override void Start(string stepName, System.Int32 p1, System.Int32 p2)
+    public override void Start(string stepName, System.Int32 p1,System.Int32 p2)
     {
-        int insertIndex = 0;
-        if (methodIndexMap.TryGetValue(stepName, out insertIndex))
+        Action<System.Int32,System.Int32> action;
+        if (method2Map.TryGetValue(stepName, out action))
         {
             TabStep tabStep = AutoCreateStep(this, stepName, stepName + "_update", false);
             if (tabStep == null)
@@ -164,7 +174,6 @@ public partial class GamePlayTab : Tab
             {
                 _stepList.Add(tabStep);
             }           
-            Action<System.Int32,  System.Int32> action = method10002List[insertIndex];
             try
             {
                 action.Invoke(p1, p2);
@@ -188,10 +197,9 @@ public partial class GamePlayTab : Tab
 
     public override void DoEvent(string eventName)
     {
-        int insertIndex = 0;
-        if (methodIndexMap.TryGetValue(eventName, out insertIndex))
+        Action action;
+        if (method0Map.TryGetValue(eventName, out action))
         {
-            Action action = method0List[insertIndex];
             try
             {
                 action.Invoke();
@@ -205,10 +213,9 @@ public partial class GamePlayTab : Tab
 
     public override void DoEvent(string eventName, System.Int32 p1)
     {
-        int insertIndex = 0;
-        if (methodIndexMap.TryGetValue(eventName, out insertIndex))
+        Action<System.Int32> action;
+        if (method1Map.TryGetValue(eventName, out action))
         {
-            Action<System.Int32> action = method10001List[insertIndex];
             try
             {
                 action.Invoke(p1);
@@ -220,12 +227,11 @@ public partial class GamePlayTab : Tab
         }
     }
 
-    public override void DoEvent(string eventName, System.Int32 p1, System.Int32 p2)
+    public override void DoEvent(string eventName, System.Int32 p1,System.Int32 p2)
     {
-        int insertIndex = 0;
-        if (methodIndexMap.TryGetValue(eventName, out insertIndex))
+        Action<System.Int32,System.Int32> action;
+        if (method2Map.TryGetValue(eventName, out action))
         {
-            Action<System.Int32,  System.Int32> action = method10002List[insertIndex];
             try
             {
                 action.Invoke(p1, p2);
@@ -251,7 +257,20 @@ public partial class GamePlayTab : Tab
         }
     }
 
-    public override void Notify(string eventName, System.Int32 p1, System.Int32 p2)
+    public override void Notify(string eventName, System.Int32 p1)
+    {
+        eventName = "event_" + eventName;
+        for (int i = 0; i < _stepList.Count; i++)
+        { 
+            TabStep tabStep = _stepList[i];
+            if (!tabStep.IsStop && tabStep.Tab != this)
+            {
+                tabStep.Tab.DoEvent(eventName, p1);
+            }
+        }
+    }
+
+    public override void Notify(string eventName, System.Int32 p1,System.Int32 p2)
     {
         eventName = "event_" + eventName;
         for (int i = 0; i < _stepList.Count; i++)
@@ -274,7 +293,16 @@ public partial class GamePlayTab : Tab
         }
     }
 
-    public override void UpwardNotify(string eventName, System.Int32 p1, System.Int32 p2)
+    public override void UpwardNotify(string eventName, System.Int32 p1)
+    {
+        if (ParentTab != null && ParentTab.MainStep != null && !ParentTab.MainStep.IsStop)
+        {
+            eventName = "event_" + eventName;
+            ParentTab.DoEvent(eventName, p1);
+        }
+    }
+
+    public override void UpwardNotify(string eventName, System.Int32 p1,System.Int32 p2)
     {
         if (ParentTab != null && ParentTab.MainStep != null && !ParentTab.MainStep.IsStop)
         {
