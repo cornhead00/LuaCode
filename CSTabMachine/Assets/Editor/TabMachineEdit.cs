@@ -861,7 +861,7 @@ public partial class {className} : Tab
             }}        
             try
             {{
-                action.Invoke();
+                action();
             }}
             catch (System.Exception e)
             {{
@@ -913,7 +913,7 @@ public partial class {className} : Tab
             }}           
             try
             {{
-                action.Invoke({strInvokePrams});
+                action({strInvokePrams});
             }}
             catch (System.Exception e)
             {{
@@ -947,7 +947,7 @@ public partial class {className} : Tab
         {{
             try
             {{
-                action.Invoke();
+                action();
             }}
             catch (System.Exception e)
             {{
@@ -981,7 +981,7 @@ public partial class {className} : Tab
         {{
             try
             {{
-                action.Invoke({strInvokePrams});
+                action({strInvokePrams});
             }}
             catch (System.Exception e)
             {{
